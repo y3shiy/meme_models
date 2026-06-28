@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Protocol
 from dataclasses import dataclass
+from pathlib import Path
 
 
 class Translator(Protocol):
@@ -20,6 +21,10 @@ class Translator(Protocol):
                             raise_on_failed_rows: bool = False,
                             missing_value: str = '', **kwargs) -> DataFrame:
         ...
+
+
+class UnsupportedLanguage(Exception):
+    pass
 
 
 class DeepL:
@@ -78,6 +83,44 @@ class DeepL:
                         raise RuntimeError(f'Server Error {status}: {resp_text}')
                     case status:
                         raise RuntimeError(f'HTTP {status}: {resp_text}')
+
+    async def _get_supported_languages(self, force_fetch_new: bool = False) -> frozenset[str]:
+        cache_path = Path('cache/deepl_supported_languages.json')
+        if not force_fetch_new and cache_path.exists():
+            cache_file_text = cache_path.read_text(encoding='utf-8')
+            supported_languages_json = json.loads(cache_file_text)
+
+            self.logger.info(f'Supported languages loaded from {cache_path}')
+        else:
+            supported_languages_text = await self._fetch_supported_languages_raw()
+
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(supported_languages_text, encoding='utf-8')
+
+            supported_languages_json = json.loads(supported_languages_text)
+
+            self.logger.info(f'Supported languages were fetched successfully and written to {cache_path}')
+
+        supported_languages = []
+        for obj in supported_languages_json:
+            if obj['usable_as_source'] == False or obj['usable_as_target'] == False:
+                continue
+            supported_languages.append(obj['lang'])
+
+        return frozenset(supported_languages)
+
+    async def _fetch_supported_languages_raw(self) -> str:
+        endpoint = self.api_config.get_supported_languages_query_endpoint()
+
+        self.logger.info(f'Supported languages will be fetched from {endpoint}')
+
+        headers = {'Authorization': f'DeepL-Auth-Key {self.api_config.api_key}'}
+
+        async with ClientSession() as session:
+            async with session.get(endpoint, headers=headers) as resp:
+                resp_text = await resp.text()
+                resp.raise_for_status()
+                return resp_text
 
 
 @dataclass(frozen=True)
