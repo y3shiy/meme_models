@@ -31,6 +31,7 @@ class DeepL:
     def __init__(self, api_key: str, is_free_api: bool = False) -> None:
         self.api_config = DeepLApiConfig(api_key, is_free_api)
         self.logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
+        self.supported_languages = self._get_supported_languages()
 
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
@@ -47,9 +48,18 @@ class DeepL:
                             missing_value: str = '', **kwargs) -> DataFrame:
         raise NotImplementedError()
 
+    def is_supported_language(self, lang: str) -> bool:
+        lang = lang.upper()
+        return (lang == 'AUTO') or (lang in self.supported_languages)
+
     async def _send_translation_request(self, texts: list[str],
                                         source_lang: str,
                                         target_lang: str) -> list[str]:
+        if not self.is_supported_language(source_lang):
+            raise UnsupportedLanguage(f'Source language is not supported or the name is spelt incorrectly: "{source_lang}"')
+        if not self.is_supported_language(target_lang):
+            raise UnsupportedLanguage(f'Target language is not supported or the name is spelt incorrectly: "{target_lang}"')
+
         source_lang, target_lang = source_lang.upper(), target_lang.upper()
 
         endpoint = self.api_config.get_translation_endpoint()
@@ -84,7 +94,7 @@ class DeepL:
                     case status:
                         raise RuntimeError(f'HTTP {status}: {resp_text}')
 
-    async def _get_supported_languages(self, force_fetch_new: bool = False) -> frozenset[str]:
+    def _get_supported_languages(self, force_fetch_new: bool = False) -> frozenset[str]:
         cache_path = Path('cache/deepl_supported_languages.json')
         if not force_fetch_new and cache_path.exists():
             cache_file_text = cache_path.read_text(encoding='utf-8')
@@ -92,7 +102,7 @@ class DeepL:
 
             self.logger.info(f'Supported languages loaded from {cache_path}')
         else:
-            supported_languages_text = await self._fetch_supported_languages_raw()
+            supported_languages_text = asyncio.run(self._fetch_supported_languages_raw())
 
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(supported_languages_text, encoding='utf-8')
@@ -105,7 +115,7 @@ class DeepL:
         for obj in supported_languages_json:
             if obj['usable_as_source'] == False or obj['usable_as_target'] == False:
                 continue
-            supported_languages.append(obj['lang'])
+            supported_languages.append(obj['lang'].upper())
 
         return frozenset(supported_languages)
 
