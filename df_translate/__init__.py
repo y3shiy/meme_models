@@ -30,20 +30,20 @@ class UnsupportedLanguage(Exception):
 class DeepL:
     def __init__(self, api_key: str,
                  is_free_api: bool = False,
-                 client_session_factory: Callable[[], Any] | None = None,
-                 supported_languages: frozenset[str] | None = None) -> None:
-        if client_session_factory is None:
-            self.client_session_factory = lambda: aiohttp.ClientSession()
+                 _client_session_factory: Callable[[], Any] | None = None,
+                 _supported_languages: frozenset[str] | None = None) -> None:
+        if _client_session_factory is None:
+            self._client_session_factory = lambda: aiohttp.ClientSession()
         else:
-            self.client_session_factory = client_session_factory
+            self._client_session_factory = _client_session_factory
 
         self._api_config = DeepLApiConfig(api_key, is_free_api)
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 
-        if supported_languages is None:
+        if _supported_languages is None:
             self._supported_languages = self._get_supported_languages()
         else:
-            self._supported_languages = supported_languages
+            self._supported_languages = _supported_languages
 
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
@@ -87,7 +87,7 @@ class DeepL:
                        'source_lang': source_lang,
                        'target_lang': target_lang,}
 
-        async with self.client_session_factory() as session:
+        async with self._client_session_factory() as session:
             async with session.post(endpoint, headers=headers, json=payload) as resp:
                 resp_text = await resp.text()
                 match resp.status:
@@ -138,7 +138,7 @@ class DeepL:
 
         headers = {'Authorization': f'DeepL-Auth-Key {self._api_config.api_key}'}
 
-        async with self.client_session_factory() as session:
+        async with self._client_session_factory() as session:
             async with session.get(endpoint, headers=headers) as resp:
                 resp_text = await resp.text()
                 resp.raise_for_status()
