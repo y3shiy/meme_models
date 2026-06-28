@@ -1,10 +1,10 @@
+import aiohttp
 from pandas import DataFrame
-from aiohttp import ClientSession
 
 import asyncio
 import json
 import logging
-from typing import Protocol
+from typing import Any, Callable, Protocol
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,10 +28,22 @@ class UnsupportedLanguage(Exception):
 
 
 class DeepL:
-    def __init__(self, api_key: str, is_free_api: bool = False) -> None:
+    def __init__(self, api_key: str,
+                 is_free_api: bool = False,
+                 client_session_factory: Callable[[], Any] | None = None,
+                 supported_languages: frozenset[str] | None = None) -> None:
+        if client_session_factory is None:
+            self.client_session_factory = lambda: aiohttp.ClientSession()
+        else:
+            self.client_session_factory = client_session_factory
+
         self._api_config = DeepLApiConfig(api_key, is_free_api)
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
-        self._supported_languages = self._get_supported_languages()
+
+        if supported_languages is None:
+            self._supported_languages = self._get_supported_languages()
+        else:
+            self._supported_languages = supported_languages
 
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
@@ -75,7 +87,7 @@ class DeepL:
                        'source_lang': source_lang,
                        'target_lang': target_lang,}
 
-        async with ClientSession() as session:
+        async with self.client_session_factory() as session:
             async with session.post(endpoint, headers=headers, json=payload) as resp:
                 resp_text = await resp.text()
                 match resp.status:
@@ -126,7 +138,7 @@ class DeepL:
 
         headers = {'Authorization': f'DeepL-Auth-Key {self._api_config.api_key}'}
 
-        async with ClientSession() as session:
+        async with self.client_session_factory() as session:
             async with session.get(endpoint, headers=headers) as resp:
                 resp_text = await resp.text()
                 resp.raise_for_status()
