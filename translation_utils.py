@@ -29,9 +29,9 @@ class UnsupportedLanguage(Exception):
 
 class DeepL:
     def __init__(self, api_key: str, is_free_api: bool = False) -> None:
-        self.api_config = DeepLApiConfig(api_key, is_free_api)
-        self.logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
-        self.supported_languages = self._get_supported_languages()
+        self._api_config = DeepLApiConfig(api_key, is_free_api)
+        self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
+        self._supported_languages = self._get_supported_languages()
 
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
@@ -50,7 +50,7 @@ class DeepL:
 
     def is_supported_language(self, lang: str) -> bool:
         lang = lang.upper()
-        return (lang == 'AUTO') or (lang in self.supported_languages)
+        return (lang == 'AUTO') or (lang in self._supported_languages)
 
     async def _send_translation_request(self, texts: list[str],
                                         source_lang: str,
@@ -62,9 +62,9 @@ class DeepL:
 
         source_lang, target_lang = source_lang.upper(), target_lang.upper()
 
-        endpoint = self.api_config.get_translation_endpoint()
+        endpoint = self._api_config.get_translation_endpoint()
 
-        headers = {'Authorization': f'DeepL-Auth-Key {self.api_config.api_key}',
+        headers = {'Authorization': f'DeepL-Auth-Key {self._api_config.api_key}',
                    'Content-Type': 'application/json'}
 
         if source_lang == 'AUTO':
@@ -100,7 +100,7 @@ class DeepL:
             cache_file_text = cache_path.read_text(encoding='utf-8')
             supported_languages_json = json.loads(cache_file_text)
 
-            self.logger.info(f'Supported languages loaded from {cache_path}')
+            self._logger.info(f'Supported languages loaded from {cache_path}')
         else:
             supported_languages_text = asyncio.run(self._fetch_supported_languages_raw())
 
@@ -109,7 +109,7 @@ class DeepL:
 
             supported_languages_json = json.loads(supported_languages_text)
 
-            self.logger.info(f'Supported languages were fetched successfully and written to {cache_path}')
+            self._logger.info(f'Supported languages were fetched successfully and written to {cache_path}')
 
         supported_languages = []
         for obj in supported_languages_json:
@@ -120,11 +120,11 @@ class DeepL:
         return frozenset(supported_languages)
 
     async def _fetch_supported_languages_raw(self) -> str:
-        endpoint = self.api_config.get_supported_languages_query_endpoint()
+        endpoint = self._api_config.get_supported_languages_query_endpoint()
 
-        self.logger.info(f'Supported languages will be fetched from {endpoint}')
+        self._logger.info(f'Supported languages will be fetched from {endpoint}')
 
-        headers = {'Authorization': f'DeepL-Auth-Key {self.api_config.api_key}'}
+        headers = {'Authorization': f'DeepL-Auth-Key {self._api_config.api_key}'}
 
         async with ClientSession() as session:
             async with session.get(endpoint, headers=headers) as resp:
