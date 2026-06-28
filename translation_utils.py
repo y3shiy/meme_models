@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from typing import Protocol
+from dataclasses import dataclass
 
 
 class Translator(Protocol):
@@ -23,8 +24,7 @@ class Translator(Protocol):
 
 class DeepL:
     def __init__(self, api_key: str, is_free_api: bool = False) -> None:
-        self.api_key = api_key
-        self.is_free_api = is_free_api
+        self.api_config = DeepLApiConfig(api_key, is_free_api)
         self.logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 
     def translate_text(self, text: str,
@@ -47,12 +47,9 @@ class DeepL:
                                         target_lang: str) -> list[str]:
         source_lang, target_lang = source_lang.upper(), target_lang.upper()
 
-        if self.is_free_api:
-            endpoint = 'https://api-free.deepl.com/v2/translate'
-        else:
-            endpoint = 'https://api.deepl.com/v2/translate'
+        endpoint = self.api_config.get_translation_endpoint()
 
-        headers = {'Authorization': f'DeepL-Auth-Key {self.api_key}',
+        headers = {'Authorization': f'DeepL-Auth-Key {self.api_config.api_key}',
                    'Content-Type': 'application/json'}
 
         if source_lang == 'AUTO':
@@ -81,3 +78,21 @@ class DeepL:
                         raise RuntimeError(f'Server Error {status}: {resp_text}')
                     case status:
                         raise RuntimeError(f'HTTP {status}: {resp_text}')
+
+
+@dataclass(frozen=True)
+class DeepLApiConfig:
+    api_key: str = ''
+    is_free_api: bool = False
+
+    def get_translation_endpoint(self) -> str:
+        if self.is_free_api:
+            return 'https://api-free.deepl.com/v2/translate'
+        else:
+            return 'https://api.deepl.com/v2/translate'
+
+    def get_supported_languages_query_endpoint(self) -> str:
+        if self.is_free_api:
+            return 'https://api-free.deepl.com/v3/languages?resource=translate_text'
+        else:
+            return 'https://api.deepl.com/v3/languages?resource=translate_text'
