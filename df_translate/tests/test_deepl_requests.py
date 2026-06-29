@@ -27,6 +27,8 @@ class FakeClientSession:
     def __init__(self) -> None:
         self.post_args = None
         self.post_kwargs = None
+        self.get_args = None
+        self.get_kwargs = None
 
     async def __aenter__(self):
         return self
@@ -41,7 +43,14 @@ class FakeClientSession:
         return FakeResponse(200, {'translations': [{'text': 'Bonjour le monde!'}]})
 
     def get(self, *args, **kwargs) -> FakeResponse:
-        return FakeResponse(200, [])
+        self.get_args = args
+        self.get_kwargs = kwargs
+        return FakeResponse(200, [{'lang': 'en',
+                                   'usable_as_source': True,
+                                   'usable_as_target': True},
+                                  {'lang': 'fr',
+                                   'usable_as_source': True,
+                                   'usable_as_target': True}])
 
 
 @pytest.fixture
@@ -87,3 +96,38 @@ def test_translation_auto_source_lang(fake_session: FakeClientSession):
         'json': {'text': ['Hello, world!'],
                  'target_lang': 'FR'}
     }
+
+
+@pytest.mark.parametrize(
+    'is_free_api,expected_endpoint',
+    [(False, 'https://api.deepl.com/v3/languages?resource=translate_text'),
+     (True, 'https://api-free.deepl.com/v3/languages?resource=translate_text')]
+)
+def test_supported_languages_fetches_new(fake_session: FakeClientSession,
+                                         monkeypatch: pytest.MonkeyPatch,
+                                         tmp_path,
+                                         is_free_api: bool,
+                                         expected_endpoint: str):
+    monkeypatch.chdir(tmp_path)
+
+    deepl = DeepL('DUMMY_API_KEY', is_free_api,
+                  _client_session_factory=lambda: fake_session)
+
+    assert deepl.is_supported_language('en')
+    assert deepl.is_supported_language('fr')
+    assert fake_session.get_args == (expected_endpoint,)
+    assert fake_session.get_kwargs == {
+        'headers': {'Authorization': 'DeepL-Auth-Key DUMMY_API_KEY'}
+    }
+
+    cache_path = tmp_path / 'cache' / 'deepl_supported_languages.json'
+
+    assert cache_path.exists()
+    assert json.loads(cache_path.read_text(encoding='utf-8')) == [
+        {'lang': 'en',
+         'usable_as_source': True,
+         'usable_as_target': True},
+        {'lang': 'fr',
+         'usable_as_source': True,
+         'usable_as_target': True}
+    ]
