@@ -49,7 +49,30 @@ def fake_session() -> FakeClientSession:
     return FakeClientSession()
 
 
-def test_translation_request_uses_expected_payload(fake_session: FakeClientSession):
+@pytest.mark.parametrize('is_free_api,expected_endpoint',
+                         [(False, 'https://api.deepl.com/v2/translate'),
+                          (True, 'https://api-free.deepl.com/v2/translate')])
+def test_translation_valid_endpoint(fake_session: FakeClientSession,
+                                    is_free_api: bool,
+                                    expected_endpoint: str):
+    deepl = DeepL('DUMMY_API_KEY', is_free_api,
+                  _client_session_factory=lambda: fake_session,
+                  _supported_languages=frozenset(['EN', 'FR']))
+
+    text = deepl.translate_text('Hello, world!', 'en', 'fr')
+
+    assert text == 'Bonjour le monde!'
+    assert fake_session.post_args == (expected_endpoint,)
+    assert fake_session.post_kwargs == {
+        'headers': {'Authorization': 'DeepL-Auth-Key DUMMY_API_KEY',
+                    'Content-Type': 'application/json'},
+        'json': {'text': ['Hello, world!'],
+                 'source_lang': 'EN',
+                 'target_lang': 'FR'}
+    }
+
+
+def test_translation_auto_source_lang(fake_session: FakeClientSession):
     deepl = DeepL('DUMMY_API_KEY', True,
                   _client_session_factory=lambda: fake_session,
                   _supported_languages=frozenset(['EN', 'FR']))
@@ -62,5 +85,5 @@ def test_translation_request_uses_expected_payload(fake_session: FakeClientSessi
         'headers': {'Authorization': 'DeepL-Auth-Key DUMMY_API_KEY',
                     'Content-Type': 'application/json'},
         'json': {'text': ['Hello, world!'],
-                 'target_lang': 'FR'},
+                 'target_lang': 'FR'}
     }
