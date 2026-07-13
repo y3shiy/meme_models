@@ -48,10 +48,20 @@ class DeepL:
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
                        provider: str | None = None, **kwargs) -> str:
-        coro = self._send_translation_request([text], source_lang, target_lang)
-        result = asyncio.run(coro)
-        assert len(result) == 1
-        return result[0]
+        try:
+            coro = self._send_translation_request([text], source_lang, target_lang)
+            result = asyncio.run(coro)
+            assert len(result) == 1
+            return result[0]
+        except DeepLRequestError as error:
+            match error.status:
+                case 401 as status:
+                    raise DeepLRequestError(status, 'DeepL API key is not valid or the name is spelt incorrectly')
+                case 403 as status:
+                    raise DeepLRequestError(status, 'DeepL API key does not have permission to perform translation')
+                case status:
+                    pass
+                
 
     def translate_dataframe(self, df: DataFrame,
                             source_lang: str, target_langs: list[str],
@@ -95,16 +105,16 @@ class DeepL:
                         resp_json = json.loads(resp_text)
                         result = [obj['text'] for obj in resp_json['translations']]
                         return result
-                    case 400:
-                        raise ValueError(f'Bad Request: {resp_text}')
-                    case 401 | 403:
-                        raise PermissionError(f'Auth Failed: {resp_text}')
-                    case 429:
-                        raise RuntimeError(f'Rate Limited: {resp_text}')
+                    case 400 as status:
+                        raise DeepLRequestError(status, f'Bad Request: {resp_text}')
+                    case 401 | 403 as status:
+                        raise DeepLRequestError(status, f'Auth Failed: {resp_text}')
+                    case 429 as status:
+                        raise DeepLRequestError(status, f'Rate Limited: {resp_text}')
                     case status if 500 <= status < 600:
-                        raise RuntimeError(f'Server Error {status}: {resp_text}')
+                        raise DeepLRequestError(status, f'Server Error {status}: {resp_text}')
                     case status:
-                        raise RuntimeError(f'HTTP {status}: {resp_text}')
+                        raise DeepLRequestError(f'HTTP {status}: {resp_text}')
 
     def _get_supported_languages(self, force_fetch_new: bool = False) -> frozenset[str]:
         cache_path = Path('cache/deepl_supported_languages.json')
@@ -161,3 +171,9 @@ class DeepLApiConfig:
             return 'https://api-free.deepl.com/v3/languages?resource=translate_text'
         else:
             return 'https://api.deepl.com/v3/languages?resource=translate_text'
+
+
+class DeepLRequestError(Exception):
+    def __init__(self, status: int, message: str):
+        self.status = status
+        super().__init__(message)
