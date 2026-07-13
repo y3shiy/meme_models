@@ -111,7 +111,46 @@ class DeepL:
                             provider: str | None = None,
                             raise_on_failed_rows: bool = False,
                             missing_value: str = '', **kwargs) -> DataFrame:
-        raise NotImplementedError()
+        if raise_on_failed_rows:
+            raise NotImplementedError()
+
+        if not isinstance(target_langs, list):
+            raise ValueError()
+
+        if df.shape[0] <= 0 or len(target_langs) <= 0:
+            return DataFrame()
+
+        df_rows: int = df.shape[0]
+        result = [[missing_value] * len(target_langs) for _ in range(df_rows)]
+        assert result != []
+
+        batch_size = self._requests_config.batch_size
+        for i in range(len(target_langs)):
+            next_untranslated = 0
+            while next_untranslated < df_rows:
+                first_untranslated = next_untranslated
+                remaining_this_batch = batch_size
+                batch = [] # list of coroutines
+                while remaining_this_batch > 0 and next_untranslated < df_rows:
+                    text = df.iloc[next_untranslated, 0]
+                    coro = self._send_translation_request([text], source_lang, target_langs[i])
+                    batch.append(coro)
+                    next_untranslated += 1
+                    remaining_this_batch -= 1
+
+                async def gather_batch():
+                    return await asyncio.gather(*batch, return_exceptions=True)
+
+                batch_result = asyncio.run(gather_batch())
+                for j, x in enumerate(batch_result):
+                    if isinstance(x, BaseException):
+                        result[first_untranslated + j][i] = missing_value
+                    else:
+                        result[first_untranslated + j][i] = x[0] # since list[str] is returned
+
+        columns = [f'{df.columns[0]}_{lang}' for lang in target_langs]
+        return DataFrame(result, columns=columns)
+
 
     def is_supported_language(self, lang: str) -> bool:
         lang = lang.upper()
