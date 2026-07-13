@@ -49,6 +49,8 @@ class DeepL:
                         raise DeepLRequestError(status, 'DeepL API key is not valid or the name is spelt incorrectly')
                     case 403 as status:
                         raise DeepLRequestError(status, 'DeepL API key does not have permission to perform translation')
+                    case _:
+                        raise
         else:
             self._supported_languages = _supported_languages
 
@@ -66,7 +68,8 @@ class DeepL:
                     raise DeepLRequestError(status, 'DeepL API key is not valid or the name is spelt incorrectly')
                 case 403 as status:
                     raise DeepLRequestError(status, 'DeepL API key does not have permission to perform translation')
-                
+                case _:
+                    raise
 
     def translate_dataframe(self, df: DataFrame,
                             source_lang: str, target_langs: list[str],
@@ -84,7 +87,7 @@ class DeepL:
             return
         if status == 400:
             raise DeepLRequestError(status, f'Bad Request: {resp_text}')
-        if status in [401, 403]:
+        if status in (401, 403):
             raise DeepLRequestError(status, f'Auth Failed: {resp_text}')
         if status == 429:
             raise DeepLRequestError(status, f'Rate Limited: {resp_text}')
