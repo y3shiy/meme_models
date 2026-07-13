@@ -1,5 +1,5 @@
 from aiohttp import ClientTimeout
-from aiohttp_retry import ListRetry, RetryClient
+from aiohttp_retry import ExponentialRetry, RetryClient
 from pandas import DataFrame
 
 import asyncio
@@ -8,12 +8,6 @@ import logging
 from typing import Any, Callable, Protocol
 from dataclasses import dataclass
 from pathlib import Path
-
-
-DEEPL_REQUEST_TIMEOUT_SECONDS = 10
-DEEPL_RETRY_ATTEMPTS = 3
-DEEPL_RETRY_PERIOD_SECONDS = 1
-DEEPL_RETRY_STATUSES = {429}
 
 
 class Translator(Protocol):
@@ -39,12 +33,17 @@ class DeepL:
                  is_free_api: bool = False,
                  _client_session_factory: Callable[[], Any] | None = None,
                  _supported_languages: frozenset[str] | None = None) -> None:
+        self._requests_config = DeepLRequestsConfig()
+
         if _client_session_factory is None:
             self._client_session_factory = lambda: RetryClient(
-                timeout=ClientTimeout(total=DEEPL_REQUEST_TIMEOUT_SECONDS),
-                retry_options=ListRetry([DEEPL_RETRY_PERIOD_SECONDS] * DEEPL_RETRY_ATTEMPTS,
-                                        statuses=DEEPL_RETRY_STATUSES,
-                                        retry_all_server_errors=True)
+                timeout=ClientTimeout(total=self._requests_config.timeout_ms / 1000),
+                retry_options=ExponentialRetry(
+                    attempts=self._requests_config.max_retries + 1,
+                    start_timeout=self._requests_config.retry_interval_ms / 1000,
+                    factor=1.0,
+                    statuses=self._requests_config.retry_statuses,
+                    retry_all_server_errors=True)
             )
         else:
             self._client_session_factory = _client_session_factory
@@ -65,6 +64,30 @@ class DeepL:
                         raise
         else:
             self._supported_languages = _supported_languages
+
+    def use_batch_size(self, batch_size: int) -> 'DeepL':
+        if batch_size <= 0:
+            raise ValueError('batch_size must be positive')
+        self._requests_config.batch_size = batch_size
+        return self
+
+    def use_max_retries(self, max_retries: int) -> 'DeepL':
+        if max_retries < 0:
+            raise ValueError('max_retries cannot be negative')
+        self._requests_config.max_retries = max_retries
+        return self
+
+    def use_retry_interval_ms(self, retry_interval_ms: int) -> 'DeepL':
+        if retry_interval_ms < 0:
+            raise ValueError('retry_interval_ms cannot be negative')
+        self._requests_config.retry_interval_ms = retry_interval_ms
+        return self
+
+    def use_timeout_ms(self, timeout_ms: int) -> 'DeepL':
+        if timeout_ms <= 0:
+            raise ValueError('timeout_ms must be positive')
+        self._requests_config.timeout_ms = timeout_ms
+        return self
 
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
@@ -194,6 +217,15 @@ class DeepLApiConfig:
             return 'https://api-free.deepl.com/v3/languages?resource=translate_text'
         else:
             return 'https://api.deepl.com/v3/languages?resource=translate_text'
+
+
+@dataclass
+class DeepLRequestsConfig:
+    batch_size: int = 10
+    max_retries: int = 3
+    retry_interval_ms: int = 1000
+    retry_statuses: frozenset[int] = frozenset({429})
+    timeout_ms: int = 10000
 
 
 class DeepLRequestError(Exception):

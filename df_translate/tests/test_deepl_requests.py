@@ -143,9 +143,8 @@ def test_default_session_factory_uses_retry_policy(monkeypatch: pytest.MonkeyPat
         def __init__(self, **kwargs) -> None:
             captured_timeout.update(kwargs)
 
-    class FakeListRetry:
-        def __init__(self, timeouts, **kwargs) -> None:
-            captured_retry_options['timeouts'] = timeouts
+    class FakeExponentialRetry:
+        def __init__(self, **kwargs) -> None:
             captured_retry_options.update(kwargs)
 
     class FakeRetryClient:
@@ -153,19 +152,31 @@ def test_default_session_factory_uses_retry_policy(monkeypatch: pytest.MonkeyPat
             captured_retry_client.update(kwargs)
 
     monkeypatch.setattr(df_translate_module, 'ClientTimeout', FakeClientTimeout)
-    monkeypatch.setattr(df_translate_module, 'ListRetry', FakeListRetry)
+    monkeypatch.setattr(df_translate_module, 'ExponentialRetry', FakeExponentialRetry)
     monkeypatch.setattr(df_translate_module, 'RetryClient', FakeRetryClient)
 
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'FR']))
+    configured_deepl = deepl \
+        .use_batch_size(50) \
+        .use_max_retries(3) \
+        .use_retry_interval_ms(300) \
+        .use_timeout_ms(2000)
 
     session = deepl._client_session_factory()
 
+    assert configured_deepl is deepl
+    assert deepl._requests_config.batch_size == 50
+    assert deepl._requests_config.max_retries == 3
+    assert deepl._requests_config.retry_interval_ms == 300
+    assert deepl._requests_config.timeout_ms == 2000
     assert isinstance(session, FakeRetryClient)
-    assert captured_timeout == {'total': 10}
+    assert captured_timeout == {'total': 2.0}
     assert isinstance(captured_retry_client['timeout'], FakeClientTimeout)
-    assert isinstance(captured_retry_client['retry_options'], FakeListRetry)
-    expected_retry_options = {'timeouts': [1, 1, 1],
-                              'statuses': {429},
+    assert isinstance(captured_retry_client['retry_options'], FakeExponentialRetry)
+    expected_retry_options = {'attempts': 4,
+                              'start_timeout': 0.3,
+                              'factor': 1.0,
+                              'statuses': frozenset({429}),
                               'retry_all_server_errors': True}
     assert captured_retry_options == expected_retry_options
