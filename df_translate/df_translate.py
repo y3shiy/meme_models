@@ -1,4 +1,5 @@
-import aiohttp
+from aiohttp import ClientTimeout
+from aiohttp_retry import ListRetry, RetryClient
 from pandas import DataFrame
 
 import asyncio
@@ -7,6 +8,12 @@ import logging
 from typing import Any, Callable, Protocol
 from dataclasses import dataclass
 from pathlib import Path
+
+
+DEEPL_REQUEST_TIMEOUT_SECONDS = 10
+DEEPL_RETRY_ATTEMPTS = 3
+DEEPL_RETRY_PERIOD_SECONDS = 1
+DEEPL_RETRY_STATUSES = {403, 429}
 
 
 class Translator(Protocol):
@@ -33,7 +40,12 @@ class DeepL:
                  _client_session_factory: Callable[[], Any] | None = None,
                  _supported_languages: frozenset[str] | None = None) -> None:
         if _client_session_factory is None:
-            self._client_session_factory = lambda: aiohttp.ClientSession()
+            self._client_session_factory = lambda: RetryClient(
+                timeout=ClientTimeout(total=DEEPL_REQUEST_TIMEOUT_SECONDS),
+                retry_options=ListRetry([DEEPL_RETRY_PERIOD_SECONDS] * DEEPL_RETRY_ATTEMPTS,
+                                        statuses=DEEPL_RETRY_STATUSES,
+                                        retry_all_server_errors=True)
+            )
         else:
             self._client_session_factory = _client_session_factory
 
