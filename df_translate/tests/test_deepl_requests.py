@@ -59,43 +59,6 @@ def fake_session() -> FakeClientSession:
     return FakeClientSession()
 
 
-def test_default_session_factory_uses_retry_policy(monkeypatch: pytest.MonkeyPatch):
-    captured_timeout = {}
-    captured_retry_options = {}
-    captured_retry_client = {}
-
-    class FakeClientTimeout:
-        def __init__(self, **kwargs) -> None:
-            captured_timeout.update(kwargs)
-
-    class FakeListRetry:
-        def __init__(self, timeouts, **kwargs) -> None:
-            captured_retry_options['timeouts'] = timeouts
-            captured_retry_options.update(kwargs)
-
-    class FakeRetryClient:
-        def __init__(self, **kwargs) -> None:
-            captured_retry_client.update(kwargs)
-
-    monkeypatch.setattr(df_translate_module, 'ClientTimeout', FakeClientTimeout)
-    monkeypatch.setattr(df_translate_module, 'ListRetry', FakeListRetry)
-    monkeypatch.setattr(df_translate_module, 'RetryClient', FakeRetryClient)
-
-    deepl = DeepL('DUMMY_API_KEY',
-                  _supported_languages=frozenset(['EN', 'FR']))
-
-    session = deepl._client_session_factory()
-
-    assert isinstance(session, FakeRetryClient)
-    assert captured_timeout == {'total': 10}
-    assert isinstance(captured_retry_client['timeout'], FakeClientTimeout)
-    assert isinstance(captured_retry_client['retry_options'], FakeListRetry)
-    expected_retry_options = {'timeouts': [1, 1, 1],
-                              'statuses': {429},
-                              'retry_all_server_errors': True}
-    assert captured_retry_options == expected_retry_options
-
-
 @pytest.mark.parametrize('is_free_api,expected_endpoint',
                          [(False, 'https://api.deepl.com/v2/translate'),
                           (True, 'https://api-free.deepl.com/v2/translate')])
@@ -169,3 +132,40 @@ def test_supported_languages_fetches_new(fake_session: FakeClientSession,
          'usable_as_source': True,
          'usable_as_target': True}
     ]
+
+
+def test_default_session_factory_uses_retry_policy(monkeypatch: pytest.MonkeyPatch):
+    captured_timeout = {}
+    captured_retry_options = {}
+    captured_retry_client = {}
+
+    class FakeClientTimeout:
+        def __init__(self, **kwargs) -> None:
+            captured_timeout.update(kwargs)
+
+    class FakeListRetry:
+        def __init__(self, timeouts, **kwargs) -> None:
+            captured_retry_options['timeouts'] = timeouts
+            captured_retry_options.update(kwargs)
+
+    class FakeRetryClient:
+        def __init__(self, **kwargs) -> None:
+            captured_retry_client.update(kwargs)
+
+    monkeypatch.setattr(df_translate_module, 'ClientTimeout', FakeClientTimeout)
+    monkeypatch.setattr(df_translate_module, 'ListRetry', FakeListRetry)
+    monkeypatch.setattr(df_translate_module, 'RetryClient', FakeRetryClient)
+
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'FR']))
+
+    session = deepl._client_session_factory()
+
+    assert isinstance(session, FakeRetryClient)
+    assert captured_timeout == {'total': 10}
+    assert isinstance(captured_retry_client['timeout'], FakeClientTimeout)
+    assert isinstance(captured_retry_client['retry_options'], FakeListRetry)
+    expected_retry_options = {'timeouts': [1, 1, 1],
+                              'statuses': {429},
+                              'retry_all_server_errors': True}
+    assert captured_retry_options == expected_retry_options
