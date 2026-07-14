@@ -5,3 +5,5 @@ venv*
 .env*
 env*
 playground/*
+notebooks/__marimo__/*
+notebooks/cache/*
