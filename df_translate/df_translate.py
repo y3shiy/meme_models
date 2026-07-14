@@ -3,11 +3,12 @@ from aiohttp_retry import ExponentialRetry, RetryClient
 from pandas import DataFrame
 
 import asyncio
+import itertools
 import json
 import logging
-from typing import Any, Callable, Protocol
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable, Protocol
 
 
 class Translator(Protocol):
@@ -125,28 +126,19 @@ class DeepL:
         assert result != []
 
         batch_size = self._requests_config.batch_size
-        for i in range(len(target_langs)):
-            next_untranslated = 0
-            while next_untranslated < df_rows:
-                first_untranslated = next_untranslated
-                remaining_this_batch = batch_size
-                batch = [] # list of coroutines
-                while remaining_this_batch > 0 and next_untranslated < df_rows:
-                    text = df.iloc[next_untranslated, 0]
-                    coro = self._send_translation_request([text], source_lang, target_langs[i])
-                    batch.append(coro)
-                    next_untranslated += 1
-                    remaining_this_batch -= 1
-
-                async def gather_batch():
-                    return await asyncio.gather(*batch, return_exceptions=True)
-
-                batch_result = asyncio.run(gather_batch())
-                for j, x in enumerate(batch_result):
-                    if isinstance(x, BaseException):
-                        result[first_untranslated + j][i] = missing_value
-                    else:
-                        result[first_untranslated + j][i] = x[0] # since list[str] is returned
+        for i, target_lang in enumerate(target_langs):
+            total_translated = 0
+            for batch in itertools.batched(df.iloc[:, 0], batch_size):
+                batch_result = asyncio.run(self._translate_dataframe_range(
+                    df, source_lang, target_lang,
+                    raise_on_failed_rows=raise_on_failed_rows,
+                    missing_value=missing_value,
+                    from_index=total_translated,
+                    count=len(batch)
+                ))
+                for j, translation in enumerate(batch_result):
+                    result[total_translated + j][i] = translation
+                total_translated += len(batch)
 
         columns = [f'{df.columns[0]}_{lang}' for lang in target_langs]
         return DataFrame(result, columns=columns)
@@ -238,6 +230,32 @@ class DeepL:
                 resp_text = await resp.text()
                 self._raise_for_status(resp.status, resp_text)
                 return resp_text
+
+    async def _translate_dataframe_range(self, df: DataFrame,
+                                         source_lang: str, target_lang: str,
+                                         raise_on_failed_rows: bool,
+                                         missing_value: str,
+                                         from_index: int, count: int) -> list[str]:
+        if raise_on_failed_rows:
+            raise NotImplementedError()
+
+        if from_index + count > df.shape[0]:
+            raise ValueError()
+
+        batch = [] # list of coroutines
+        for i in range(from_index, from_index + count):
+            text = df.iloc[i, 0]
+            coro = self._send_translation_request([text], source_lang, target_lang)
+            batch.append(coro)
+
+        batch_result = await asyncio.gather(*batch, return_exceptions=True)
+        for i, x in enumerate(batch_result):
+            if isinstance(x, Exception):
+                batch_result[i] = missing_value
+            else:
+                batch_result[i] = x[0]
+
+        return batch_result
 
 
 @dataclass(frozen=True)
