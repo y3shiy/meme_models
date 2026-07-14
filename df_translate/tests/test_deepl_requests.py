@@ -269,13 +269,25 @@ def test_translate_dataframe_empty_inputs():
                        pd.DataFrame())
 
 
-def test_translate_dataframe_raise_mode_unimplemented():
+def test_translate_dataframe_raise_mode(monkeypatch: MonkeyPatch):
+    async def fake_send_translation_request(texts: list[str],
+                                            source_lang: str,
+                                            target_lang: str) -> list[str]:
+        if texts == ['bye'] and target_lang == 'fr':
+            raise DeepLRequestError(429, 'Rate Limited')
+        return [f'{texts[0]}_{target_lang.lower()}']
+
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
-    df = pd.DataFrame({'foo': ['hello']})
+    monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
 
-    with pytest.raises(NotImplementedError):
-        deepl.translate_dataframe(df, 'en', ['fr'], raise_on_failed_rows=True)
+    df = pd.DataFrame({'foo': ['hello', 'bye']})
+
+    with pytest.raises(DeepLRequestError) as exc_info:
+        deepl.translate_dataframe(df, 'en', ['fr'],
+                                  raise_on_failed_rows=True)
+
+    assert exc_info.value.status == 429
 
 
 def test_translate_dataframe_target_langs_list_required():

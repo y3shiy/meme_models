@@ -112,9 +112,6 @@ class DeepL:
                             provider: str | None = None,
                             raise_on_failed_rows: bool = False,
                             missing_value: str = '', **kwargs) -> DataFrame:
-        if raise_on_failed_rows:
-            raise NotImplementedError()
-
         if not isinstance(target_langs, list):
             raise ValueError()
 
@@ -236,9 +233,6 @@ class DeepL:
                                          raise_on_failed_rows: bool,
                                          missing_value: str,
                                          from_index: int, count: int) -> list[str]:
-        if raise_on_failed_rows:
-            raise NotImplementedError()
-
         if from_index + count > df.shape[0]:
             raise ValueError()
 
@@ -247,8 +241,9 @@ class DeepL:
             text = df.iloc[i, 0]
             coro = self._send_translation_request([text], source_lang, target_lang)
             batch.append(coro)
+        
+        batch_result = await asyncio.gather(*batch, return_exceptions=not raise_on_failed_rows)
 
-        batch_result = await asyncio.gather(*batch, return_exceptions=True)
         for i, x in enumerate(batch_result):
             if isinstance(x, Exception):
                 batch_result[i] = missing_value
