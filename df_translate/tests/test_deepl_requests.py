@@ -66,14 +66,15 @@ def fake_session() -> FakeClientSession:
 @pytest.mark.parametrize('is_free_api,expected_endpoint',
                          [(False, 'https://api.deepl.com/v2/translate'),
                           (True, 'https://api-free.deepl.com/v2/translate')])
-def test_translation_valid_endpoint(fake_session: FakeClientSession,
-                                    is_free_api: bool,
-                                    expected_endpoint: str):
+@pytest.mark.asyncio
+async def test_translation_valid_endpoint(fake_session: FakeClientSession,
+                                          is_free_api: bool,
+                                          expected_endpoint: str):
     deepl = DeepL('DUMMY_API_KEY', is_free_api,
                   _client_session_factory=lambda: fake_session,
                   _supported_languages=frozenset(['EN', 'FR']))
 
-    text = deepl.translate_text('Hello, world!', 'en', 'fr')
+    text = await deepl.translate_text('Hello, world!', 'en', 'fr')
 
     assert text == 'Bonjour le monde!'
     assert fake_session.post_args == (expected_endpoint,)
@@ -86,12 +87,13 @@ def test_translation_valid_endpoint(fake_session: FakeClientSession,
     }
 
 
-def test_translation_auto_source_lang(fake_session: FakeClientSession):
+@pytest.mark.asyncio
+async def test_translation_auto_source_lang(fake_session: FakeClientSession):
     deepl = DeepL('DUMMY_API_KEY', True,
                   _client_session_factory=lambda: fake_session,
                   _supported_languages=frozenset(['EN', 'FR']))
 
-    text = deepl.translate_text('Hello, world!', 'auto', 'fr')
+    text = await deepl.translate_text('Hello, world!', 'auto', 'fr')
 
     assert text == 'Bonjour le monde!'
     assert fake_session.post_args == ('https://api-free.deepl.com/v2/translate',)
@@ -108,15 +110,16 @@ def test_translation_auto_source_lang(fake_session: FakeClientSession):
     [(False, 'https://api.deepl.com/v3/languages?resource=translate_text'),
      (True, 'https://api-free.deepl.com/v3/languages?resource=translate_text')]
 )
-def test_supported_languages_fetches_new(fake_session: FakeClientSession,
-                                         monkeypatch: MonkeyPatch,
-                                         tmp_path,
-                                         is_free_api: bool,
-                                         expected_endpoint: str):
+@pytest.mark.asyncio
+async def test_supported_languages_fetches_new(fake_session: FakeClientSession,
+                                               monkeypatch: MonkeyPatch,
+                                               tmp_path,
+                                               is_free_api: bool,
+                                               expected_endpoint: str):
     monkeypatch.chdir(tmp_path)
 
-    deepl = DeepL('DUMMY_API_KEY', is_free_api,
-                  _client_session_factory=lambda: fake_session)
+    deepl = await DeepL.create('DUMMY_API_KEY', is_free_api,
+                               _client_session_factory=lambda: fake_session)
 
     assert deepl.is_supported_language('en')
     assert deepl.is_supported_language('fr')
@@ -186,7 +189,8 @@ def test_default_session_factory_uses_retry_policy(monkeypatch: MonkeyPatch):
     assert captured_retry_options == expected_retry_options
 
 
-def test_translate_dataframe_single_column(monkeypatch: MonkeyPatch):
+@pytest.mark.asyncio
+async def test_translate_dataframe_single_column(monkeypatch: MonkeyPatch):
     calls = []
 
     async def fake_send_translation_request(texts: list[str],
@@ -203,7 +207,7 @@ def test_translate_dataframe_single_column(monkeypatch: MonkeyPatch):
     df = pd.DataFrame({'foo': ['hello', 'bye'],
                        'bar': ['ignored 1', 'ignored 2']})
 
-    translated_df = deepl.translate_dataframe(df[['foo']], 'en', ['fr', 'de'])
+    translated_df = await deepl.translate_dataframe(df[['foo']], 'en', ['fr', 'de'])
 
     expected_df = pd.DataFrame({'foo_fr': ['hello_fr', 'bye_fr'],
                                 'foo_de': ['hello_de', 'bye_de']})
@@ -214,7 +218,8 @@ def test_translate_dataframe_single_column(monkeypatch: MonkeyPatch):
                                     (['bye'], 'en', 'de')])
 
 
-def test_translate_dataframe_first_column(monkeypatch: MonkeyPatch):
+@pytest.mark.asyncio
+async def test_translate_dataframe_first_column(monkeypatch: MonkeyPatch):
     calls = []
 
     async def fake_send_translation_request(texts: list[str],
@@ -231,7 +236,7 @@ def test_translate_dataframe_first_column(monkeypatch: MonkeyPatch):
     df = pd.DataFrame({'foo': ['hello', 'bye'],
                        'bar': ['ignored 1', 'ignored 2']})
 
-    translated_df = deepl.translate_dataframe(df, 'en', ['fr'])
+    translated_df = await deepl.translate_dataframe(df, 'en', ['fr'])
 
     expected_df = pd.DataFrame({'foo_fr': ['hello_fr', 'bye_fr']})
     assert_frame_equal(translated_df, expected_df)
@@ -239,7 +244,8 @@ def test_translate_dataframe_first_column(monkeypatch: MonkeyPatch):
                                     (['bye'], 'en', 'fr')])
 
 
-def test_translate_dataframe_failed_rows(monkeypatch: MonkeyPatch):
+@pytest.mark.asyncio
+async def test_translate_dataframe_failed_rows(monkeypatch: MonkeyPatch):
     async def fake_send_translation_request(texts: list[str],
                                             source_lang: str,
                                             target_lang: str) -> list[str]:
@@ -254,26 +260,28 @@ def test_translate_dataframe_failed_rows(monkeypatch: MonkeyPatch):
 
     df = pd.DataFrame({'foo': ['hello', 'bye']})
 
-    translated_df = deepl.translate_dataframe(df, 'en', ['fr', 'de'],
-                                              raise_on_failed_rows=False,
-                                              missing_value='MISSING')
+    translated_df = await deepl.translate_dataframe(df, 'en', ['fr', 'de'],
+                                                    raise_on_failed_rows=False,
+                                                    missing_value='MISSING')
 
     expected_df = pd.DataFrame({'foo_fr': ['hello_fr', 'MISSING'],
                                 'foo_de': ['hello_de', 'bye_de']})
     assert_frame_equal(translated_df, expected_df)
 
 
-def test_translate_dataframe_empty_inputs():
+@pytest.mark.asyncio
+async def test_translate_dataframe_empty_inputs():
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
 
-    assert_frame_equal(deepl.translate_dataframe(pd.DataFrame({'foo': []}), 'en', ['fr']),
+    assert_frame_equal(await deepl.translate_dataframe(pd.DataFrame({'foo': []}), 'en', ['fr']),
                        pd.DataFrame())
-    assert_frame_equal(deepl.translate_dataframe(pd.DataFrame({'foo': ['hello']}), 'en', []),
+    assert_frame_equal(await deepl.translate_dataframe(pd.DataFrame({'foo': ['hello']}), 'en', []),
                        pd.DataFrame())
 
 
-def test_translate_dataframe_raise_mode(monkeypatch: MonkeyPatch):
+@pytest.mark.asyncio
+async def test_translate_dataframe_raise_mode(monkeypatch: MonkeyPatch):
     async def fake_send_translation_request(texts: list[str],
                                             source_lang: str,
                                             target_lang: str) -> list[str]:
@@ -289,22 +297,24 @@ def test_translate_dataframe_raise_mode(monkeypatch: MonkeyPatch):
     df = pd.DataFrame({'foo': ['hello', 'bye']})
 
     with pytest.raises(DeepLRequestError) as exc_info:
-        deepl.translate_dataframe(df, 'en', ['fr'],
-                                  raise_on_failed_rows=True)
+        await deepl.translate_dataframe(df, 'en', ['fr'],
+                                        raise_on_failed_rows=True)
 
     assert exc_info.value.status == 429
 
 
-def test_translate_dataframe_target_langs_list_required():
+@pytest.mark.asyncio
+async def test_translate_dataframe_target_langs_list_required():
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
     df = pd.DataFrame({'foo': ['hello']})
 
     with pytest.raises(BeartypeCallHintParamViolation):
-        deepl.translate_dataframe(df, 'en', 'fr')
+        await deepl.translate_dataframe(df, 'en', 'fr')
 
 
-def test_translate_dataframe_batches_requests(monkeypatch: MonkeyPatch):
+@pytest.mark.asyncio
+async def test_translate_dataframe_batches_requests(monkeypatch: MonkeyPatch):
     calls = []
 
     async def fake_send_translation_request(texts: list[str],
@@ -320,7 +330,7 @@ def test_translate_dataframe_batches_requests(monkeypatch: MonkeyPatch):
 
     df = pd.DataFrame({'foo': ['row0', 'row1', 'row2', 'row3', 'row4', 'row5', 'row6']})
 
-    translated_df = deepl.translate_dataframe(df, 'en', ['fr'])
+    translated_df = await deepl.translate_dataframe(df, 'en', ['fr'])
 
     expected_df = pd.DataFrame({'foo_fr': ['row0_fr', 'row1_fr', 'row2_fr',
                                            'row3_fr', 'row4_fr', 'row5_fr',
@@ -331,7 +341,8 @@ def test_translate_dataframe_batches_requests(monkeypatch: MonkeyPatch):
                      (['row6'], 'en', 'fr')]
 
 
-def test_translate_dataframe_grouped_failure(monkeypatch: MonkeyPatch):
+@pytest.mark.asyncio
+async def test_translate_dataframe_grouped_failure(monkeypatch: MonkeyPatch):
     async def fake_send_translation_request(texts: list[str],
                                             source_lang: str,
                                             target_lang: str) -> list[str]:
@@ -346,9 +357,9 @@ def test_translate_dataframe_grouped_failure(monkeypatch: MonkeyPatch):
 
     df = pd.DataFrame({'foo': ['row0', 'row1', 'row2', 'row3', 'row4', 'row5', 'row6']})
 
-    translated_df = deepl.translate_dataframe(df, 'en', ['fr', 'de'],
-                                              raise_on_failed_rows=False,
-                                              missing_value='MISSING')
+    translated_df = await deepl.translate_dataframe(df, 'en', ['fr', 'de'],
+                                                    raise_on_failed_rows=False,
+                                                    missing_value='MISSING')
 
     expected_df = pd.DataFrame({'foo_fr': ['row0_fr', 'row1_fr', 'row2_fr',
                                            'MISSING', 'MISSING', 'MISSING',
@@ -372,12 +383,13 @@ def test_use_batch_size_rejects_invalid_type():
         deepl.use_batch_size('10')
 
 
-def test_translate_text_rejects_invalid_text_type():
+@pytest.mark.asyncio
+async def test_translate_text_rejects_invalid_text_type():
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'FR']))
 
     with pytest.raises(BeartypeCallHintParamViolation):
-        deepl.translate_text(123, 'en', 'fr')
+        await deepl.translate_text(123, 'en', 'fr')
 
 
 def test_is_supported_language_rejects_invalid_type():
@@ -386,3 +398,10 @@ def test_is_supported_language_rejects_invalid_type():
 
     with pytest.raises(BeartypeCallHintParamViolation):
         deepl.is_supported_language(123)
+
+
+def test_deepl_constructor_requires_supported_languages():
+    with pytest.raises(ValueError) as exc_info:
+        DeepL('DUMMY_API_KEY')
+
+    assert str(exc_info.value) == 'Use await DeepL.create(...) to fetch supported languages'

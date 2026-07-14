@@ -14,16 +14,16 @@ from typing import Any, Protocol
 
 
 class Translator(Protocol):
-    def translate_text(self, text: str,
-                       source_lang: str, target_lang: str,
-                       provider: str | None = None, **kwargs: Any) -> str:
+    async def translate_text(self, text: str,
+                             source_lang: str, target_lang: str,
+                             provider: str | None = None, **kwargs: Any) -> str:
         ...
 
-    def translate_dataframe(self, df: DataFrame,
-                            source_lang: str, target_langs: list[str],
-                            provider: str | None = None,
-                            raise_on_failed_rows: bool = False,
-                            missing_value: str = '', **kwargs: Any) -> DataFrame:
+    async def translate_dataframe(self, df: DataFrame,
+                                  source_lang: str, target_langs: list[str],
+                                  provider: str | None = None,
+                                  raise_on_failed_rows: bool = False,
+                                  missing_value: str = '', **kwargs: Any) -> DataFrame:
         ...
 
 
@@ -56,18 +56,29 @@ class DeepL:
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 
         if _supported_languages is None:
-            try:
-                self._supported_languages = self._get_supported_languages()
-            except DeepLRequestError as error:
-                match error.status:
-                    case 401 as status:
-                        raise DeepLRequestError(status, 'DeepL API key is not valid or the name is spelt incorrectly')
-                    case 403 as status:
-                        raise DeepLRequestError(status, 'DeepL API key does not have permission to perform translation')
-                    case _:
-                        raise
-        else:
-            self._supported_languages = _supported_languages
+            raise ValueError('Use await DeepL.create(...) to fetch supported languages')
+
+        self._supported_languages = _supported_languages
+
+    @classmethod
+    @beartype
+    async def create(cls, api_key: str,
+                     is_free_api: bool = False,
+                     _client_session_factory: Callable[[], Any] | None = None) -> 'DeepL':
+        deepl = cls(api_key, is_free_api,
+                    _client_session_factory=_client_session_factory,
+                    _supported_languages=frozenset())
+        try:
+            deepl._supported_languages = await deepl._get_supported_languages()
+        except DeepLRequestError as error:
+            match error.status:
+                case 401 as status:
+                    raise DeepLRequestError(status, 'DeepL API key is not valid or the name is spelt incorrectly')
+                case 403 as status:
+                    raise DeepLRequestError(status, 'DeepL API key does not have permission to perform translation')
+                case _:
+                    raise
+        return deepl
 
     @beartype
     def use_batch_size(self, batch_size: int) -> 'DeepL':
@@ -107,12 +118,11 @@ class DeepL:
         return self
 
     @beartype
-    def translate_text(self, text: str,
-                       source_lang: str, target_lang: str,
-                       provider: str | None = None, **kwargs: Any) -> str:
+    async def translate_text(self, text: str,
+                             source_lang: str, target_lang: str,
+                             provider: str | None = None, **kwargs: Any) -> str:
         try:
-            coro = self._send_translation_request([text], source_lang, target_lang)
-            result = asyncio.run(coro)
+            result = await self._send_translation_request([text], source_lang, target_lang)
             assert len(result) == 1
             return result[0]
         except DeepLRequestError as error:
@@ -125,11 +135,11 @@ class DeepL:
                     raise
 
     @beartype
-    def translate_dataframe(self, df: DataFrame,
-                            source_lang: str, target_langs: list[str],
-                            provider: str | None = None,
-                            raise_on_failed_rows: bool = False,
-                            missing_value: str = '', **kwargs: Any) -> DataFrame:
+    async def translate_dataframe(self, df: DataFrame,
+                                  source_lang: str, target_langs: list[str],
+                                  provider: str | None = None,
+                                  raise_on_failed_rows: bool = False,
+                                  missing_value: str = '', **kwargs: Any) -> DataFrame:
         if df.shape[0] <= 0 or len(target_langs) <= 0:
             return DataFrame()
 
@@ -141,13 +151,13 @@ class DeepL:
         for i, target_lang in enumerate(target_langs):
             total_translated = 0
             for batch in itertools.batched(df.iloc[:, 0], batch_size):
-                batch_result = asyncio.run(self._translate_dataframe_range(
+                batch_result = await self._translate_dataframe_range(
                     df, source_lang, target_lang,
                     raise_on_failed_rows=raise_on_failed_rows,
                     missing_value=missing_value,
                     from_index=total_translated,
                     count=len(batch)
-                ))
+                )
                 for j, translation in enumerate(batch_result):
                     result[total_translated + j][i] = translation
                 total_translated += len(batch)
@@ -206,7 +216,7 @@ class DeepL:
                 result = [obj['text'] for obj in resp_json['translations']]
                 return result
 
-    def _get_supported_languages(self, force_fetch_new: bool = False) -> frozenset[str]:
+    async def _get_supported_languages(self, force_fetch_new: bool = False) -> frozenset[str]:
         cache_path = Path('cache/deepl_supported_languages.json')
         if not force_fetch_new and cache_path.exists():
             cache_file_text = cache_path.read_text(encoding='utf-8')
@@ -214,7 +224,7 @@ class DeepL:
 
             self._logger.info(f'Supported languages loaded from {cache_path}')
         else:
-            supported_languages_text = asyncio.run(self._fetch_supported_languages_raw())
+            supported_languages_text = await self._fetch_supported_languages_raw()
 
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(supported_languages_text, encoding='utf-8')
