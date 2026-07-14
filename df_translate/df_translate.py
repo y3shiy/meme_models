@@ -72,6 +72,14 @@ class DeepL:
         self._requests_config.batch_size = batch_size
         return self
 
+    def use_texts_per_request(self, texts_per_request: int) -> 'DeepL':
+        if texts_per_request <= 0:
+            raise ValueError('batch_size must be positive')
+        if texts_per_request > 50:
+            raise ValueError('texts_per_request is capped at 50 according to DeepL API docs')
+        self._requests_config.texts_per_request = texts_per_request
+        return self
+
     def use_max_retries(self, max_retries: int) -> 'DeepL':
         if max_retries < 0:
             raise ValueError('max_retries cannot be negative')
@@ -233,24 +241,34 @@ class DeepL:
                                          raise_on_failed_rows: bool,
                                          missing_value: str,
                                          from_index: int, count: int) -> list[str]:
+        assert from_index >= 0
+        assert count > 0
+
         if from_index + count > df.shape[0]:
             raise ValueError()
 
-        batch = [] # list of coroutines
-        for i in range(from_index, from_index + count):
-            text = df.iloc[i, 0]
-            coro = self._send_translation_request([text], source_lang, target_lang)
-            batch.append(coro)
+        coroutines = [] # list of coroutines
+        batch_lengths = []
+        texts_per_request = self._requests_config.texts_per_request
+        for batch in itertools.batched(df.iloc[from_index:from_index + count, 0],
+                                       texts_per_request):
+            texts = list(batch)
+            batch_lengths.append(len(texts))
+            coro = self._send_translation_request(texts, source_lang, target_lang)
+            coroutines.append(coro)
         
-        batch_result = await asyncio.gather(*batch, return_exceptions=not raise_on_failed_rows)
+        translated: list[list[str]] = await asyncio.gather(
+                *coroutines, return_exceptions=not raise_on_failed_rows
+        )
 
-        for i, x in enumerate(batch_result):
-            if isinstance(x, Exception):
-                batch_result[i] = missing_value
+        result: list[str] = []
+        for i, translations in enumerate(translated):
+            if isinstance(translations, Exception):
+                result.extend([missing_value] * batch_lengths[i])
             else:
-                batch_result[i] = x[0]
+                result.extend(translations)
 
-        return batch_result
+        return result
 
 
 @dataclass(frozen=True)
@@ -273,7 +291,8 @@ class DeepLApiConfig:
 
 @dataclass
 class DeepLRequestsConfig:
-    batch_size: int = 10
+    batch_size: int = 100
+    texts_per_request: int = 50
     max_retries: int = 3
     retry_interval_ms: int = 1000
     retry_statuses: frozenset[int] = frozenset({429})

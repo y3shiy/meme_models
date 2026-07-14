@@ -196,6 +196,7 @@ def test_translate_dataframe_single_column(monkeypatch: MonkeyPatch):
 
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    deepl.use_texts_per_request(1)
     monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
 
     df = pd.DataFrame({'foo': ['hello', 'bye'],
@@ -223,6 +224,7 @@ def test_translate_dataframe_first_column(monkeypatch: MonkeyPatch):
 
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    deepl.use_texts_per_request(1)
     monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
 
     df = pd.DataFrame({'foo': ['hello', 'bye'],
@@ -246,6 +248,7 @@ def test_translate_dataframe_failed_rows(monkeypatch: MonkeyPatch):
 
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    deepl.use_texts_per_request(1)
     monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
 
     df = pd.DataFrame({'foo': ['hello', 'bye']})
@@ -279,6 +282,7 @@ def test_translate_dataframe_raise_mode(monkeypatch: MonkeyPatch):
 
     deepl = DeepL('DUMMY_API_KEY',
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    deepl.use_texts_per_request(1)
     monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
 
     df = pd.DataFrame({'foo': ['hello', 'bye']})
@@ -297,3 +301,58 @@ def test_translate_dataframe_target_langs_list_required():
 
     with pytest.raises(ValueError):
         deepl.translate_dataframe(df, 'en', 'fr')
+
+
+def test_translate_dataframe_batches_requests(monkeypatch: MonkeyPatch):
+    calls = []
+
+    async def fake_send_translation_request(texts: list[str],
+                                            source_lang: str,
+                                            target_lang: str) -> list[str]:
+        calls.append((texts, source_lang, target_lang))
+        return [f'{text}_{target_lang.lower()}' for text in texts]
+
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'FR']))
+    deepl.use_batch_size(6).use_texts_per_request(3)
+    monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
+
+    df = pd.DataFrame({'foo': ['row0', 'row1', 'row2', 'row3', 'row4', 'row5', 'row6']})
+
+    translated_df = deepl.translate_dataframe(df, 'en', ['fr'])
+
+    expected_df = pd.DataFrame({'foo_fr': ['row0_fr', 'row1_fr', 'row2_fr',
+                                           'row3_fr', 'row4_fr', 'row5_fr',
+                                           'row6_fr']})
+    assert_frame_equal(translated_df, expected_df)
+    assert calls == [(['row0', 'row1', 'row2'], 'en', 'fr'),
+                     (['row3', 'row4', 'row5'], 'en', 'fr'),
+                     (['row6'], 'en', 'fr')]
+
+
+def test_translate_dataframe_grouped_failure(monkeypatch: MonkeyPatch):
+    async def fake_send_translation_request(texts: list[str],
+                                            source_lang: str,
+                                            target_lang: str) -> list[str]:
+        if 'row4' in texts and target_lang == 'fr':
+            raise DeepLRequestError(429, 'Rate Limited')
+        return [f'{text}_{target_lang.lower()}' for text in texts]
+
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    deepl.use_batch_size(6).use_texts_per_request(3)
+    monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
+
+    df = pd.DataFrame({'foo': ['row0', 'row1', 'row2', 'row3', 'row4', 'row5', 'row6']})
+
+    translated_df = deepl.translate_dataframe(df, 'en', ['fr', 'de'],
+                                              raise_on_failed_rows=False,
+                                              missing_value='MISSING')
+
+    expected_df = pd.DataFrame({'foo_fr': ['row0_fr', 'row1_fr', 'row2_fr',
+                                           'MISSING', 'MISSING', 'MISSING',
+                                           'row6_fr'],
+                                'foo_de': ['row0_de', 'row1_de', 'row2_de',
+                                           'row3_de', 'row4_de', 'row5_de',
+                                           'row6_de']})
+    assert_frame_equal(translated_df, expected_df)
