@@ -56,7 +56,7 @@ class DeepL:
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 
         if _supported_languages is None:
-            raise ValueError('Use await DeepL.create(...) to fetch supported languages')
+            raise ValueError('Use "await DeepL.create(...)" for object creation')
 
         self._supported_languages = _supported_languages
 

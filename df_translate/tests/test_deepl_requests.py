@@ -404,4 +404,4 @@ def test_deepl_constructor_requires_supported_languages():
     with pytest.raises(ValueError) as exc_info:
         DeepL('DUMMY_API_KEY')
 
-    assert str(exc_info.value) == 'Use await DeepL.create(...) to fetch supported languages'
+    assert str(exc_info.value) == 'Use "await DeepL.create(...)" for object creation'
