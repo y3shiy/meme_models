@@ -16,12 +16,11 @@ from typing import Any, Protocol
 class Translator(Protocol):
     async def translate_text(self, text: str,
                              source_lang: str, target_lang: str,
-                             provider: str | None = None, **kwargs: Any) -> str:
+                             **kwargs: Any) -> str:
         ...
 
     async def translate_dataframe(self, df: DataFrame,
                                   source_lang: str, target_langs: list[str],
-                                  provider: str | None = None,
                                   raise_on_failed_rows: bool = False,
                                   missing_value: str = '', **kwargs: Any) -> DataFrame:
         ...
@@ -120,7 +119,7 @@ class DeepL:
     @beartype
     async def translate_text(self, text: str,
                              source_lang: str, target_lang: str,
-                             provider: str | None = None, **kwargs: Any) -> str:
+                             **kwargs: Any) -> str:
         if not self.is_supported_language(source_lang):
             raise UnsupportedLanguage(f'Source language is not supported or the name is spelt incorrectly: "{source_lang}"')
         if not self.is_supported_language(target_lang):
@@ -142,7 +141,6 @@ class DeepL:
     @beartype
     async def translate_dataframe(self, df: DataFrame,
                                   source_lang: str, target_langs: list[str],
-                                  provider: str | None = None,
                                   raise_on_failed_rows: bool = False,
                                   missing_value: str = '', **kwargs: Any) -> DataFrame:
         if not self.is_supported_language(source_lang):
