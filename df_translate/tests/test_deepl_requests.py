@@ -1,9 +1,12 @@
 import json
 
 import pytest
+import pandas as pd
+from pytest import MonkeyPatch
+from pandas.testing import assert_frame_equal
 
 import df_translate as df_translate_module
-from df_translate import DeepL
+from df_translate import DeepL, DeepLRequestError
 
 
 class FakeResponse:
@@ -105,7 +108,7 @@ def test_translation_auto_source_lang(fake_session: FakeClientSession):
      (True, 'https://api-free.deepl.com/v3/languages?resource=translate_text')]
 )
 def test_supported_languages_fetches_new(fake_session: FakeClientSession,
-                                         monkeypatch: pytest.MonkeyPatch,
+                                         monkeypatch: MonkeyPatch,
                                          tmp_path,
                                          is_free_api: bool,
                                          expected_endpoint: str):
@@ -134,7 +137,7 @@ def test_supported_languages_fetches_new(fake_session: FakeClientSession,
     ]
 
 
-def test_default_session_factory_uses_retry_policy(monkeypatch: pytest.MonkeyPatch):
+def test_default_session_factory_uses_retry_policy(monkeypatch: MonkeyPatch):
     captured_timeout = {}
     captured_retry_options = {}
     captured_retry_client = {}
@@ -180,3 +183,105 @@ def test_default_session_factory_uses_retry_policy(monkeypatch: pytest.MonkeyPat
                               'statuses': frozenset({429}),
                               'retry_all_server_errors': True}
     assert captured_retry_options == expected_retry_options
+
+
+def test_translate_dataframe_single_column(monkeypatch: MonkeyPatch):
+    calls = []
+
+    async def fake_send_translation_request(texts: list[str],
+                                            source_lang: str,
+                                            target_lang: str) -> list[str]:
+        calls.append((texts, source_lang, target_lang))
+        return [f'{texts[0]}_{target_lang.lower()}']
+
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
+
+    df = pd.DataFrame({'foo': ['hello', 'bye'],
+                       'bar': ['ignored 1', 'ignored 2']})
+
+    translated_df = deepl.translate_dataframe(df[['foo']], 'en', ['fr', 'de'])
+
+    expected_df = pd.DataFrame({'foo_fr': ['hello_fr', 'bye_fr'],
+                                'foo_de': ['hello_de', 'bye_de']})
+    assert_frame_equal(translated_df, expected_df)
+    assert sorted(calls) == sorted([(['hello'], 'en', 'fr'),
+                                    (['bye'], 'en', 'fr'),
+                                    (['hello'], 'en', 'de'),
+                                    (['bye'], 'en', 'de')])
+
+
+def test_translate_dataframe_first_column(monkeypatch: MonkeyPatch):
+    calls = []
+
+    async def fake_send_translation_request(texts: list[str],
+                                            source_lang: str,
+                                            target_lang: str) -> list[str]:
+        calls.append((texts, source_lang, target_lang))
+        return [f'{texts[0]}_{target_lang.lower()}']
+
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
+
+    df = pd.DataFrame({'foo': ['hello', 'bye'],
+                       'bar': ['ignored 1', 'ignored 2']})
+
+    translated_df = deepl.translate_dataframe(df, 'en', ['fr'])
+
+    expected_df = pd.DataFrame({'foo_fr': ['hello_fr', 'bye_fr']})
+    assert_frame_equal(translated_df, expected_df)
+    assert sorted(calls) == sorted([(['hello'], 'en', 'fr'),
+                                    (['bye'], 'en', 'fr')])
+
+
+def test_translate_dataframe_failed_rows(monkeypatch: MonkeyPatch):
+    async def fake_send_translation_request(texts: list[str],
+                                            source_lang: str,
+                                            target_lang: str) -> list[str]:
+        if texts == ['bye'] and target_lang == 'fr':
+            raise DeepLRequestError(429, 'Rate Limited')
+        return [f'{texts[0]}_{target_lang.lower()}']
+
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    monkeypatch.setattr(deepl, '_send_translation_request', fake_send_translation_request)
+
+    df = pd.DataFrame({'foo': ['hello', 'bye']})
+
+    translated_df = deepl.translate_dataframe(df, 'en', ['fr', 'de'],
+                                              raise_on_failed_rows=False,
+                                              missing_value='MISSING')
+
+    expected_df = pd.DataFrame({'foo_fr': ['hello_fr', 'MISSING'],
+                                'foo_de': ['hello_de', 'bye_de']})
+    assert_frame_equal(translated_df, expected_df)
+
+
+def test_translate_dataframe_empty_inputs():
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+
+    assert_frame_equal(deepl.translate_dataframe(pd.DataFrame({'foo': []}), 'en', ['fr']),
+                       pd.DataFrame())
+    assert_frame_equal(deepl.translate_dataframe(pd.DataFrame({'foo': ['hello']}), 'en', []),
+                       pd.DataFrame())
+
+
+def test_translate_dataframe_raise_mode_unimplemented():
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    df = pd.DataFrame({'foo': ['hello']})
+
+    with pytest.raises(NotImplementedError):
+        deepl.translate_dataframe(df, 'en', ['fr'], raise_on_failed_rows=True)
+
+
+def test_translate_dataframe_target_langs_list_required():
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'DE', 'FR']))
+    df = pd.DataFrame({'foo': ['hello']})
+
+    with pytest.raises(ValueError):
+        deepl.translate_dataframe(df, 'en', 'fr')
