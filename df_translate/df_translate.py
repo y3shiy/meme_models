@@ -121,6 +121,11 @@ class DeepL:
     async def translate_text(self, text: str,
                              source_lang: str, target_lang: str,
                              provider: str | None = None, **kwargs: Any) -> str:
+        if not self.is_supported_language(source_lang):
+            raise UnsupportedLanguage(f'Source language is not supported or the name is spelt incorrectly: "{source_lang}"')
+        if not self.is_supported_language(target_lang):
+            raise UnsupportedLanguage(f'Target language is not supported or the name is spelt incorrectly: "{target_lang}"')
+
         try:
             result = await self._send_translation_request([text], source_lang, target_lang)
             assert len(result) == 1
@@ -140,6 +145,13 @@ class DeepL:
                                   provider: str | None = None,
                                   raise_on_failed_rows: bool = False,
                                   missing_value: str = '', **kwargs: Any) -> DataFrame:
+        if not self.is_supported_language(source_lang):
+            raise UnsupportedLanguage(f'Source language is not supported or the name is spelt incorrectly: "{source_lang}"')
+
+        for lang in target_langs:
+            if not self.is_supported_language(lang):
+                raise UnsupportedLanguage(f'Target language is not supported or the name is spelt incorrectly: "{lang}"')
+
         if df.shape[0] <= 0 or len(target_langs) <= 0:
             return DataFrame()
 
@@ -188,10 +200,8 @@ class DeepL:
     async def _send_translation_request(self, texts: list[str],
                                         source_lang: str,
                                         target_lang: str) -> list[str]:
-        if not self.is_supported_language(source_lang):
-            raise UnsupportedLanguage(f'Source language is not supported or the name is spelt incorrectly: "{source_lang}"')
-        if not self.is_supported_language(target_lang):
-            raise UnsupportedLanguage(f'Target language is not supported or the name is spelt incorrectly: "{target_lang}"')
+        assert self.is_supported_language(source_lang)
+        assert self.is_supported_language(target_lang)
 
         source_lang, target_lang = source_lang.upper(), target_lang.upper()
 
