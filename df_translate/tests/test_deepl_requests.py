@@ -2,6 +2,7 @@ import json
 
 import pytest
 import pandas as pd
+from beartype.roar import BeartypeCallHintParamViolation
 from pytest import MonkeyPatch
 from pandas.testing import assert_frame_equal
 
@@ -299,7 +300,7 @@ def test_translate_dataframe_target_langs_list_required():
                   _supported_languages=frozenset(['EN', 'DE', 'FR']))
     df = pd.DataFrame({'foo': ['hello']})
 
-    with pytest.raises(ValueError):
+    with pytest.raises(BeartypeCallHintParamViolation):
         deepl.translate_dataframe(df, 'en', 'fr')
 
 
@@ -356,3 +357,32 @@ def test_translate_dataframe_grouped_failure(monkeypatch: MonkeyPatch):
                                            'row3_de', 'row4_de', 'row5_de',
                                            'row6_de']})
     assert_frame_equal(translated_df, expected_df)
+
+
+def test_deepl_constructor_rejects_invalid_api_key_type():
+    with pytest.raises(BeartypeCallHintParamViolation):
+        DeepL(123, _supported_languages=frozenset(['EN']))
+
+
+def test_use_batch_size_rejects_invalid_type():
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN']))
+
+    with pytest.raises(BeartypeCallHintParamViolation):
+        deepl.use_batch_size('10')
+
+
+def test_translate_text_rejects_invalid_text_type():
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN', 'FR']))
+
+    with pytest.raises(BeartypeCallHintParamViolation):
+        deepl.translate_text(123, 'en', 'fr')
+
+
+def test_is_supported_language_rejects_invalid_type():
+    deepl = DeepL('DUMMY_API_KEY',
+                  _supported_languages=frozenset(['EN']))
+
+    with pytest.raises(BeartypeCallHintParamViolation):
+        deepl.is_supported_language(123)

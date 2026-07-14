@@ -1,27 +1,29 @@
 from aiohttp import ClientTimeout
 from aiohttp_retry import ExponentialRetry, RetryClient
+from beartype import beartype
 from pandas import DataFrame
 
 import asyncio
 import itertools
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 
 class Translator(Protocol):
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
-                       provider: str | None = None, **kwargs) -> str:
+                       provider: str | None = None, **kwargs: Any) -> str:
         ...
 
     def translate_dataframe(self, df: DataFrame,
                             source_lang: str, target_langs: list[str],
                             provider: str | None = None,
                             raise_on_failed_rows: bool = False,
-                            missing_value: str = '', **kwargs) -> DataFrame:
+                            missing_value: str = '', **kwargs: Any) -> DataFrame:
         ...
 
 
@@ -30,6 +32,7 @@ class UnsupportedLanguage(Exception):
 
 
 class DeepL:
+    @beartype
     def __init__(self, api_key: str,
                  is_free_api: bool = False,
                  _client_session_factory: Callable[[], Any] | None = None,
@@ -66,12 +69,14 @@ class DeepL:
         else:
             self._supported_languages = _supported_languages
 
+    @beartype
     def use_batch_size(self, batch_size: int) -> 'DeepL':
         if batch_size <= 0:
             raise ValueError('batch_size must be positive')
         self._requests_config.batch_size = batch_size
         return self
 
+    @beartype
     def use_texts_per_request(self, texts_per_request: int) -> 'DeepL':
         if texts_per_request <= 0:
             raise ValueError('batch_size must be positive')
@@ -80,27 +85,31 @@ class DeepL:
         self._requests_config.texts_per_request = texts_per_request
         return self
 
+    @beartype
     def use_max_retries(self, max_retries: int) -> 'DeepL':
         if max_retries < 0:
             raise ValueError('max_retries cannot be negative')
         self._requests_config.max_retries = max_retries
         return self
 
+    @beartype
     def use_retry_interval_ms(self, retry_interval_ms: int) -> 'DeepL':
         if retry_interval_ms < 0:
             raise ValueError('retry_interval_ms cannot be negative')
         self._requests_config.retry_interval_ms = retry_interval_ms
         return self
 
+    @beartype
     def use_timeout_ms(self, timeout_ms: int) -> 'DeepL':
         if timeout_ms <= 0:
             raise ValueError('timeout_ms must be positive')
         self._requests_config.timeout_ms = timeout_ms
         return self
 
+    @beartype
     def translate_text(self, text: str,
                        source_lang: str, target_lang: str,
-                       provider: str | None = None, **kwargs) -> str:
+                       provider: str | None = None, **kwargs: Any) -> str:
         try:
             coro = self._send_translation_request([text], source_lang, target_lang)
             result = asyncio.run(coro)
@@ -115,14 +124,12 @@ class DeepL:
                 case _:
                     raise
 
+    @beartype
     def translate_dataframe(self, df: DataFrame,
                             source_lang: str, target_langs: list[str],
                             provider: str | None = None,
                             raise_on_failed_rows: bool = False,
-                            missing_value: str = '', **kwargs) -> DataFrame:
-        if not isinstance(target_langs, list):
-            raise ValueError()
-
+                            missing_value: str = '', **kwargs: Any) -> DataFrame:
         if df.shape[0] <= 0 or len(target_langs) <= 0:
             return DataFrame()
 
@@ -149,6 +156,7 @@ class DeepL:
         return DataFrame(result, columns=columns)
 
 
+    @beartype
     def is_supported_language(self, lang: str) -> bool:
         lang = lang.upper()
         return (lang == 'AUTO') or (lang in self._supported_languages)
