@@ -17,45 +17,7 @@ with app.setup:
     from PIL import Image
     from kagglehub import KaggleDatasetAdapter
     from pandas import DataFrame
-
-
-@app.function
-def display_image(image: Image,
-                  width: int | None = None,
-                  markings: tuple[int, int] | None = None,
-                  interactive: bool = False):
-    width = width if width is not None else image.width
-    has_markings = markings is not None
-
-    match (has_markings, interactive):
-        case False, False:
-            return mo.image(image, width=width)
-        case False, True: 
-            raise NotImplementedError()
-        case True, _:
-            assert len(markings) == 2
-            assert markings[0] > 0
-            assert markings[1] > 0
-            
-            fig, ax = plt.subplots()
-            ax.imshow(image, origin='upper')
-            ax.xaxis.tick_top()
-            ax.xaxis.set_label_position('top')
-            ax.set_xticks(range(0, image.width, markings[0]))
-            ax.set_yticks(range(0, image.height, markings[1]))
-            ax.grid()
-
-            if interactive:
-                interactive_plot = mo.mpl.interactive(fig)
-                return interactive_plot
-            else:
-                return mo.Html(
-                    f'''
-                    <div style='width: {width}px;'>
-                    {mo.as_html(fig)}
-                    </div>
-                    '''
-                )
+    from imageutils import display_image
 
 
 @app.class_definition
@@ -82,8 +44,13 @@ class Dataset1:
             image.load()
             return image
 
-    def display_image(self, image_name: str, *args, **kwargs) -> Any:
-        return display_image(self.get_image(image_name), *args, **kwargs)
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## Usage examples
+    """)
+    return
 
 
 @app.cell
@@ -95,20 +62,15 @@ def _():
 
 @app.cell
 def _(dataset1):
-    display_image(dataset1.get_image(index=2))
+    display_image(dataset1.get_image(index=5), width=200, markings=(100, 100), interactive=True)
     return
 
 
-@app.cell
-def _(dataset1):
-    image1_name = dataset1.labels.iloc[0].image_name
-    image1_name
-    return (image1_name,)
-
-
-@app.cell
-def _(dataset1, image1_name):
-    dataset1.display_image(image1_name, markings=(100, 50), interactive=True)
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## Trial and error
+    """)
     return
 
 
@@ -117,18 +79,6 @@ def _():
     dataset_dir = kagglehub.dataset_download('hammadjavaid/6992-labeled-meme-images-dataset')
     dataset_dir = Path(dataset_dir)
     return (dataset_dir,)
-
-
-@app.cell
-def _(dataset_dir):
-    for path in dataset_dir.iterdir():
-        print(path)
-
-    for i, path in enumerate((dataset_dir/'images'/'images').iterdir()):
-        print(path)
-        if i > 10:
-            break
-    return
 
 
 @app.cell
