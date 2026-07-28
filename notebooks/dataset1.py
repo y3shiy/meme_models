@@ -63,7 +63,7 @@ def _():
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    ## Displaying sing image
+    ## Displaying one image
     """)
     return
 
