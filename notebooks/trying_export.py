@@ -9,7 +9,7 @@ with app.setup:
     import numpy as np
     import matplotlib as plt
     from dataset1 import Dataset1
-    from imageutils import plot_image, display_image
+    from imageutils import plot_image, display_image, extract_text_fragments
     from matplotlib.patches import Polygon
     from PIL import Image
 
@@ -24,12 +24,12 @@ def _():
 @app.cell
 def _(dataset1):
     image = dataset1.get_image(index=3)
-    display_image(image, width=800, markings=(100, 100), interactive=True)
+    display_image(image, width=800, ticks=(100, 100), interactive=True)
     return (image,)
 
 
 @app.cell
-def _(cropped_fragmets, extract_text_fragments, image):
+def _(cropped_fragmets, image):
     image_fragments = extract_text_fragments(image, ['en'])
     mo.vstack([mo.image(image, width=300) for image in cropped_fragmets])
     return
