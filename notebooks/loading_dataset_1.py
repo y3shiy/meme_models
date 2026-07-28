@@ -22,16 +22,14 @@ with app.setup:
 @app.function
 def display_image(image: Image,
                   width: int | None = None,
-                  height: int | None = None,
                   markings: tuple[int, int] | None = None,
                   interactive: bool = False):
     width = width if width is not None else image.width
-    height = height if height is not None else image.height
     has_markings = markings is not None
 
     match (has_markings, interactive):
         case False, False:
-            return mo.image(image, width=width, height=height)
+            return mo.image(image, width=width)
         case False, True: 
             raise NotImplementedError()
         case True, _:
@@ -75,7 +73,10 @@ class Dataset1:
     def labels(self) -> DataFrame:
         return self._labels
 
-    def get_image(self, image_name: str) -> Image:
+    def get_image(self, image_name: str | None = None, index: int = 0) -> Image:
+        if image_name is None:
+            image_name = self.labels.iloc[index].image_name
+
         images_dir = self.dataset_dir/'images'/'images'
         with Image.open(images_dir/image_name) as image:
             image.load()
@@ -90,6 +91,12 @@ def _():
     dataset1 = Dataset1()
     dataset1.labels.head()
     return (dataset1,)
+
+
+@app.cell
+def _(dataset1):
+    display_image(dataset1.get_image(index=2))
+    return
 
 
 @app.cell
