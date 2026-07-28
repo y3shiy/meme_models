@@ -17,7 +17,7 @@ with app.setup:
     from PIL import Image
     from kagglehub import KaggleDatasetAdapter
     from pandas import DataFrame
-    from imageutils import display_image
+    from imageutils import plot_image, display_image, extract_text_fragments
 
 
 @app.class_definition
@@ -55,7 +55,15 @@ class Dataset1:
 @app.cell(hide_code=True)
 def _():
     mo.md(r"""
-    ## Usage examples
+    # Usage examples
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## Displaying sing image
     """)
     return
 
@@ -80,10 +88,47 @@ def _():
     return (images_number,)
 
 
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## Displaying several images
+    """)
+    return
+
+
 @app.cell
 def _(dataset1, images_number):
     sample = dataset1.random_sample_labels(images_number.value, seed=42)
     mo.hstack([display_image(dataset1.get_image(image_name), width=200) for image_name in sample.image_name])
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(r"""
+    ## Extracting text fragments
+    """)
+    return
+
+
+@app.cell
+def _(dataset1):
+    image = dataset1.get_image(index=3)
+    display_image(image, height=200)
+    return (image,)
+
+
+@app.cell
+def _(image):
+    image_fragments = extract_text_fragments(image, ['en'])
+    mo.vstack([display_image(image, width=200) for image in image_fragments])
+    return
+
+
+@app.cell
+def _(image):
+    fig, ax = plot_image(image)
+
     return
 
 
