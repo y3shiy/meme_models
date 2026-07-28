@@ -44,6 +44,13 @@ class Dataset1:
             image.load()
             return image
 
+    def random_sample_labels(self, number: int, seed: int | None = None) -> DataFrame:
+        if seed is not None:
+            random.seed(seed)
+        
+        random_indices = random.sample(range(self.labels.shape[0]), number)
+        return self.labels.iloc[random_indices]
+
 
 @app.cell(hide_code=True)
 def _():
@@ -62,59 +69,21 @@ def _():
 
 @app.cell
 def _(dataset1):
-    display_image(dataset1.get_image(index=5), width=200, markings=(100, 100), interactive=True)
+    display_image(dataset1.get_image(index=5), width=200, ticks=(100, 100), interactive=True)
     return
-
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(r"""
-    ## Trial and error
-    """)
-    return
-
-
-@app.cell(disabled=True)
-def _():
-    dataset_dir = kagglehub.dataset_download('hammadjavaid/6992-labeled-meme-images-dataset')
-    dataset_dir = Path(dataset_dir)
-    return (dataset_dir,)
-
-
-@app.cell
-def _(dataset_dir):
-    df = pd.read_csv(dataset_dir/'labels.csv')
-    df.head()
-    return (df,)
 
 
 @app.cell
 def _():
-    random_images_number = mo.ui.slider(1, 15, value=10, label='Number of random images')
-    random_images_number
-    return (random_images_number,)
+    images_number = mo.ui.slider(1, 10, value=5, label='Number of random images')
+    images_number
+    return (images_number,)
 
 
-@app.cell(disabled=True)
-def _(dataset_dir, df, random_images_number):
-    random.seed(42)
-
-    images_dir = dataset_dir/'images'/'images'
-
-    random_images_indices = random.sample(range(df.shape[0]), random_images_number.value)
-
-    df_image_names = df.iloc[random_images_indices].image_name
-    image_paths = [images_dir/image_path for image_path in df_image_names]
-
-    image_widgets = []
-    for image_path in df_image_names:
-        with Image.open(images_dir/image_path) as image:
-            image.thumbnail((200, 200))
-            image_widgets.append(mo.image(image))
-
-    mo.vstack([
-        mo.hstack(widgets) for widgets in batched(image_widgets, 5)
-    ])
+@app.cell
+def _(dataset1, images_number):
+    sample = dataset1.random_sample_labels(images_number.value, seed=42)
+    mo.hstack([display_image(dataset1.get_image(image_name), width=200) for image_name in sample.image_name])
     return
 
 

@@ -9,19 +9,23 @@ with app.setup:
     import matplotlib.pyplot as plt
     import numpy as np
     from PIL import Image
+    from anywidget import AnyWidget
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 
 @app.function
-def plot_image(image: Image, markings: tuple[int, int] | None = None): 
+def plot_image(image: Image,
+               ticks: tuple[int, int] | None = None) -> tuple[Figure, Axes]:
     fig, ax = plt.subplots()
     
     ax.imshow(image, origin='upper')
     ax.xaxis.tick_top()
     ax.xaxis.set_label_position('top')
     
-    if markings is not None:
-        ax.set_xticks(range(0, image.width, markings[0]))
-        ax.set_yticks(range(0, image.height, markings[1]))
+    if ticks is not None:
+        ax.set_xticks(range(0, image.width, ticks[0]))
+        ax.set_yticks(range(0, image.height, ticks[1]))
         ax.grid()
         
     return fig, ax
@@ -30,30 +34,36 @@ def plot_image(image: Image, markings: tuple[int, int] | None = None):
 @app.function
 def display_image(image: Image,
                   width: int | None = None,
-                  markings: tuple[int, int] | None = None,
-                  interactive: bool = False):
-    width = width if width is not None else image.width
-    has_markings = markings is not None
-
-    match (has_markings, interactive):
+                  height: int | None = None,
+                  ticks: tuple[int, int] | None = None,
+                  interactive: bool = False) -> AnyWidget:
+    has_ticks = ticks is not None
+    
+    match (has_ticks, interactive):
         case False, False:
-            return mo.image(image, width=width)
+            return mo.image(image, width=width, height=height)
         case False, True: 
             raise NotImplementedError()
         case True, _:
-            assert len(markings) == 2
-            assert markings[0] > 0
-            assert markings[1] > 0
+            assert len(ticks) == 2
+            assert ticks[0] > 0
+            assert ticks[1] > 0
 
-            fig, ax = plot_image(image, markings)
+            fig, ax = plot_image(image, ticks)
 
             if interactive:
                 interactive_plot = mo.mpl.interactive(fig)
                 return interactive_plot
             else:
+                styles = []
+                if width is not None:
+                    styles.append(f'width: {width}px')
+                if height is not None:
+                    styles.append(f'height: {height}px')
+                    
                 return mo.Html(
                     f'''
-                    <div style='width: {width}px;'>
+                    <div style="{';'.join(styles)}">
                     {mo.as_html(fig)}
                     </div>
                     '''
