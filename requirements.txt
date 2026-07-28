@@ -1,7 +1,10 @@
 aiohttp==3.14.1
-marimo==0.23.14
+easyocr==1.7.2
+kagglehub[pandas-datasets]==1.0.2
+marimo>=0.23.14
 numpy==2.4.6
 pandas==3.0.3
+pillow==12.3.0
 scikit-learn==1.9.0
 seaborn==0.13.2
 tensorflow==2.21.0
