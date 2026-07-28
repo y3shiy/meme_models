@@ -1,9 +1,10 @@
+.env*
+.venv*
 __pycache__/*
 cache/*
-.venv*
-venv*
-.env*
 env*
-playground/*
 notebooks/__marimo__/*
+notebooks/__pycache__/*
 notebooks/cache/*
+playground/*
+venv*
