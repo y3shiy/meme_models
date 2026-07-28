@@ -125,12 +125,5 @@ def _(image):
     return
 
 
-@app.cell
-def _(image):
-    fig, ax = plot_image(image)
-
-    return
-
-
 if __name__ == "__main__":
     app.run()
