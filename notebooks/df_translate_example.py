@@ -1,20 +1,18 @@
 import marimo
 
-__generated_with = "0.23.14"
+__generated_with = "0.23.16"
 app = marimo.App(width="medium")
 
+with app.setup:
+    import os
 
-@app.cell
-def _():
     import marimo as mo
+    import pandas as pd
     from df_translate import DeepL
 
-    return (DeepL,)
-
 
 @app.cell
-async def _(DeepL):
-    import os
+async def _():
     deepl_api_key = os.environ.get('DEEPL_API_KEY')
     deepl = await DeepL.create(deepl_api_key, is_free_api=True)
     return (deepl,)
@@ -22,8 +20,7 @@ async def _(DeepL):
 
 @app.cell
 def _():
-    import pandas as pd
-    df = pd.DataFrame({'label': ['Cat', 'Frog']})
+    df = pd.DataFrame({'label': ['Pillow','Kiwi','Fridge','Dog']})
     df
     return (df,)
 
